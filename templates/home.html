@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Streaming</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        function logout() {
+            alert("Logged out");
+        }
+    </script>
 </head>
 <body class="bg-gray-100 text-gray-800">
     <!-- Navbar -->
@@ -23,8 +28,10 @@
                 <div class="flex items-center space-x-4">
                     <a href="/signup" class="hover:text-gray-300">Signup</a>
                     <a href="/login" class="hover:text-gray-300">Login</a>
+                    <a onclick="logout()" href="/logout" class="hover:text-gray-300">Logout</a>
                     <a href="/profile" class="hover:text-gray-300">Profile</a>
                 </div>
+                
             </div>
         </div>
     </nav>

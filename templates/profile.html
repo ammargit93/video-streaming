@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Profile</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+
+    <!-- Header Section -->
+    <header class="bg-gray-800 text-white py-4">
+        <div class="container mx-auto flex items-center">
+            <!-- Display Username -->
+            <span id="username" class="text-lg font-bold">
+                Welcome, <span id="user-name-placeholder">{{.username}}</span>!
+            </span>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto mt-8">
+        <div class="bg-white shadow-md rounded-lg p-6">
+            <h1 class="text-2xl font-bold mb-4">User Profile</h1>
+            <p class="text-gray-600">This is where user details and videos will go.</p>
+        </div>
+    </main>
+
+    <!-- Video Upload Button -->
+    <button 
+        id="upload-btn"
+        class="fixed bottom-6 right-6 bg-blue-600 text-white px-6 py-3 rounded-full shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+        Upload Video
+    </button>
+
+    <!-- Modal for Video Upload -->
+    <div id="video-desc-modal" class="hidden fixed inset-0 bg-gray-800 bg-opacity-50 flex justify-center items-center">
+        <div class="bg-white p-6 rounded-lg w-96">
+            <h2 class="text-xl font-bold mb-4">Upload Your Video</h2>
+            
+            <!-- Video File Input -->
+            <input 
+                type="file" 
+                name="video" 
+                accept="video/*" 
+                id="upload-video-input" 
+                class="w-full p-2 border border-gray-300 rounded-md mb-4" 
+                required>
+            
+            <!-- Video Description Input -->
+            <textarea 
+                id="video-desc" 
+                name="desc"
+                class="w-full p-2 border border-gray-300 rounded-md mb-4" 
+                placeholder="Enter a description for your video" 
+                required></textarea>
+
+            <div class="flex justify-between">
+                <!-- Cancel Button -->
+                <button 
+                    id="cancel-btn" 
+                    type="button" 
+                    class="bg-gray-400 text-white px-4 py-2 rounded-md">
+                    Cancel
+                </button>
+                
+                <!-- Submit Button -->
+                <button 
+                    id="submit-btn" 
+                    type="button" 
+                    class="bg-blue-600 text-white px-4 py-2 rounded-md">
+                    Submit
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Toggle Script -->
+    <script>
+        const uploadBtn = document.getElementById("upload-btn");
+        const modal = document.getElementById("video-desc-modal");
+        const cancelBtn = document.getElementById("cancel-btn");
+        const submitBtn = document.getElementById("submit-btn");
+        const videoDesc = document.getElementById("video-desc");
+        const videoInput = document.getElementById("upload-video-input");
+
+        // Show modal when the upload button is clicked
+        uploadBtn.addEventListener("click", function() {
+            modal.classList.remove("hidden");
+        });
+
+        // Hide modal when cancel is clicked
+        cancelBtn.addEventListener("click", function() {
+            modal.classList.add("hidden");
+        });
+
+        submitBtn.addEventListener("click", function() {
+            if (videoDesc.value.trim() && videoInput.files.length > 0) {
+                const form = document.createElement("form");
+                form.action = "/profile";
+                form.method = "post";
+                form.enctype = "multipart/form-data";
+                
+                // Video description
+                const descriptionInput = document.createElement("input");
+                descriptionInput.type = "hidden";
+                descriptionInput.name = "video_description";
+                descriptionInput.value = videoDesc.value;
+                form.appendChild(descriptionInput);
+        
+                // Video file
+                const fileInput = document.createElement("input");
+                fileInput.type = "file";
+                fileInput.name = "video";
+                fileInput.files = videoInput.files;
+                form.appendChild(fileInput);
+        
+                // Video duration - get duration of video
+                const videoElement = document.createElement('video');
+                videoElement.src = URL.createObjectURL(videoInput.files[0]);
+                videoElement.addEventListener('loadedmetadata', function() {
+                    const duration = videoElement.duration; // duration in seconds
+        
+                    // Ensure the duration is valid
+                    if (duration) {
+                        const durationInput = document.createElement("input");
+                        durationInput.type = "hidden";
+                        durationInput.name = "video_duration";
+                        durationInput.value = duration;
+                        form.appendChild(durationInput);
+                        
+                        // Submit the form once duration is added
+                        document.body.appendChild(form);
+                        form.submit();
+                    } else {
+                        alert("Error: Could not retrieve video duration.");
+                    }
+                });
+            } else {
+                alert("Please enter a description and select a video.");
+            }
+        });
+        
+        
+        
+    </script>
+
+</body>
+</html>

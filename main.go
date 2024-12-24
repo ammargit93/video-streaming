@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -14,7 +12,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	"golang.org/x/crypto/bcrypt"
 )
 
 var (
@@ -22,32 +19,8 @@ var (
 	videoCollection *mongo.Collection
 	usersCollection *mongo.Collection
 	store           = sessions.NewCookieStore([]byte("secret-key"))
+	err             error
 )
-
-type User struct {
-	Userid      string  `json:"userid" bson:"userid"`
-	Username    string  `json:"username" bson:"username"`
-	Password    string  `json:"password" bson:"password"`
-	Email       string  `json:"email" bson:"email"`
-	Age         int     `json:"age" bson:"age"`
-	Nationality string  `json:"nationality" bson:"nationality"`
-	Videos      []Video `json:"videos" bson:"videos"`
-}
-
-type Video struct {
-	Videoid     string        `json:"videoid" bson:"videoid"`
-	Videotitle  string        `json:"videotitle" bson:"videotitle"`
-	Videodesc   string        `json:"videodesc" bson:"videodesc"`
-	Videolength time.Time     `json:"videolength" bson:"videolength"`
-	Comments    []interface{} `json:"comments" bson:"comments"`
-}
-
-var err error
-
-func CheckPasswordHash(password, hash string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
-	return err == nil
-}
 
 func main() {
 	var clientOptions = options.Client().ApplyURI("mongodb://localhost:27017")
@@ -62,8 +35,6 @@ func main() {
 	videoCollection = client.Database("streamdb").Collection("videos")
 	usersCollection = client.Database("streamdb").Collection("users")
 
-	fmt.Println("HELLO")
-
 	r := gin.Default()
 	r.LoadHTMLGlob("templates/*.html")
 
@@ -77,63 +48,74 @@ func main() {
 		ctx.HTML(200, "login.html", nil)
 	})
 
-	r.POST("/signup", func(ctx *gin.Context) {
-		username := ctx.PostForm("username")
-		password := ctx.PostForm("password")
-		email := ctx.PostForm("email")
-		age := ctx.PostForm("age")
-		nationality := ctx.PostForm("nationality")
+	r.POST("/signup", SignupPOST)
 
-		hashed, _ := bcrypt.GenerateFromPassword([]byte(password), 8)
+	r.POST("/login", LoginPOST)
 
-		var user User
-		user.Userid = uuid.New().String()
-		user.Username = username
-		user.Password = string(hashed)
-		user.Email = email
-		user.Age, _ = strconv.Atoi(age)
-		user.Nationality = nationality
+	r.GET("/logout", Logout)
 
-		var potentialUser User
-		err = usersCollection.FindOne(ctx, bson.M{"username": user.Username}).Decode(&potentialUser)
+	r.GET("/profile", func(ctx *gin.Context) {
+		session, err := store.Get(ctx.Request, "curr-session")
 		if err != nil {
-			_, err = usersCollection.InsertOne(ctx, user)
-			if err != nil {
-				log.Println("Error inserting a user.")
-			}
-		} else {
-			fmt.Sprintf(`<script>alert("Username already exists, try a different name.")</script>`)
-			ctx.Redirect(http.StatusFound, "signup")
+			http.Error(ctx.Writer, "Failed to get session", http.StatusInternalServerError)
+			return
 		}
-
-		ctx.Redirect(http.StatusFound, "login")
+		curruser := session.Values["username"]
+		ctx.HTML(200, "profile.html", gin.H{"username": curruser})
 	})
 
-	r.POST("/login", func(ctx *gin.Context) {
-		username := ctx.PostForm("username")
-		password := ctx.PostForm("password")
-
-		var user User
-		usersCollection.FindOne(ctx, bson.M{"username": username}).Decode(&user)
-		result := CheckPasswordHash(password, user.Password)
-
-		if !result {
-			fmt.Println("Wrong Password Try again")
-		} else {
-			session, err := store.Get(ctx.Request, "curr-session")
-			if err != nil {
-				fmt.Println("Error declaring or retrieving a sesssion")
-			}
-			session.Values["username"] = username
-			session.Values["password"] = password
-			session.Values["email"] = user.Email
-			session.Values["age"] = user.Age
-			session.Values["nationality"] = user.Nationality
-
-			ctx.Redirect(http.StatusFound, "")
-
+	r.POST("/profile", func(ctx *gin.Context) {
+		file, err := ctx.FormFile("video")
+		if err != nil {
+			log.Println("Error reading formfile:", err)
+			ctx.JSON(400, gin.H{"Error": "Error reading video file"})
+			return
 		}
+		session, err := store.Get(ctx.Request, "curr-session")
+		if err != nil {
+			http.Error(ctx.Writer, "Failed to get session", http.StatusInternalServerError)
+			return
+		}
+		thumbnail := ReadAndSaveThumbnail(ctx, file)
+
+		var video Video = Video{
+			Videoid:        uuid.New().String(),
+			Videoauthor:    session.Values["username"].(string),
+			Videotitle:     file.Filename,
+			Videodesc:      ctx.PostForm("video_description"),
+			Videosize:      file.Size,
+			Videothumbnail: thumbnail,
+		}
+
+		if file.Header.Get("Content-Type") != "video/mp4" {
+			ctx.JSON(400, gin.H{"Error": "Only video/mp4 files allowed"})
+			return
+		}
+
+		_, err = videoCollection.InsertOne(ctx, video)
+		if err != nil {
+			log.Println("Error inserting video:", err)
+			ctx.JSON(500, gin.H{"Error": "Video insertion failed"})
+			return
+		}
+
+		var userVideos []Video
+		cursor, err := videoCollection.Find(ctx, bson.M{"videoauthor": session.Values["username"].(string)})
+		if err != nil {
+			log.Println("Error finding videos:", err)
+			ctx.JSON(500, gin.H{"Error": "Failed to retrieve videos"})
+			return
+		}
+		defer cursor.Close(ctx)
+
+		if err := cursor.All(ctx, &userVideos); err != nil {
+			log.Println("Error decoding videos:", err)
+			ctx.JSON(500, gin.H{"Error": "Failed to decode video data"})
+			return
+		}
+		ctx.HTML(200, "profile.html", gin.H{"username": session.Values["username"].(string), "videos": userVideos})
 	})
 
+	fmt.Println("Starting the Server.")
 	r.Run(":8080")
 }
