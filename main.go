@@ -32,11 +32,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// var db = client.Database("streamdb")
+
 	videoCollection = client.Database("streamdb").Collection("videos")
 	usersCollection = client.Database("streamdb").Collection("users")
 
 	r := gin.Default()
 	r.LoadHTMLGlob("templates/*.html")
+	r.Static("/static", "./static")
 
 	r.GET("/", func(ctx *gin.Context) {
 		ctx.HTML(200, "home.html", nil)
@@ -60,8 +64,21 @@ func main() {
 			http.Error(ctx.Writer, "Failed to get session", http.StatusInternalServerError)
 			return
 		}
-		curruser := session.Values["username"]
-		ctx.HTML(200, "profile.html", gin.H{"username": curruser})
+		cursor, err := videoCollection.Find(ctx, bson.M{"videoauthor": session.Values["username"].(string)})
+		if err != nil {
+			log.Println("Error finding videos:", err)
+			ctx.JSON(500, gin.H{"Error": "Failed to retrieve videos"})
+			return
+		}
+		defer cursor.Close(ctx)
+		var userVideos []Video
+		if err := cursor.All(ctx, &userVideos); err != nil {
+			log.Println("Error decoding videos:", err)
+			ctx.JSON(500, gin.H{"Error": "Failed to decode video data"})
+			return
+		}
+
+		ctx.HTML(200, "profile.html", gin.H{"username": session.Values["username"].(string), "videos": userVideos})
 	})
 
 	r.POST("/profile", func(ctx *gin.Context) {
@@ -76,14 +93,15 @@ func main() {
 			http.Error(ctx.Writer, "Failed to get session", http.StatusInternalServerError)
 			return
 		}
-		thumbnail := ReadAndSaveThumbnail(ctx, file)
-
+		thumbnail, _ := ReadAndSaveThumbnail(ctx, file)
+		fileID, _ := UploadToGridFS(file, client.Database("streamdb"))
 		var video Video = Video{
 			Videoid:        uuid.New().String(),
 			Videoauthor:    session.Values["username"].(string),
 			Videotitle:     file.Filename,
 			Videodesc:      ctx.PostForm("video_description"),
 			Videosize:      file.Size,
+			Videofileid:    fileID,
 			Videothumbnail: thumbnail,
 		}
 
@@ -91,7 +109,6 @@ func main() {
 			ctx.JSON(400, gin.H{"Error": "Only video/mp4 files allowed"})
 			return
 		}
-
 		_, err = videoCollection.InsertOne(ctx, video)
 		if err != nil {
 			log.Println("Error inserting video:", err)
@@ -99,7 +116,18 @@ func main() {
 			return
 		}
 
+		var user User
+		user.Videos = append(user.Videos, video)
+		_, err = usersCollection.UpdateOne(ctx, bson.M{"username": session.Values["username"].(string)}, bson.M{
+			"$set": bson.M{"videos": user.Videos},
+		})
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
 		var userVideos []Video
+
 		cursor, err := videoCollection.Find(ctx, bson.M{"videoauthor": session.Values["username"].(string)})
 		if err != nil {
 			log.Println("Error finding videos:", err)
@@ -113,6 +141,12 @@ func main() {
 			ctx.JSON(500, gin.H{"Error": "Failed to decode video data"})
 			return
 		}
+
+		// for _, video := range userVideos {
+		// 	video.Videothumbnail = base64Thumbnail
+		// 	fmt.Println(video.Videothumbnail)
+		// }
+
 		ctx.HTML(200, "profile.html", gin.H{"username": session.Values["username"].(string), "videos": userVideos})
 	})
 
