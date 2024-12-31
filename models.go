@@ -11,13 +11,14 @@ type User struct {
 }
 
 type Video struct {
-	Videoid     string `json:"videoid" bson:"videoid"`
-	Videoauthor string `json:"videoauthor" bson:"videoauthor"`
-	Videotitle  string `json:"videotitle" bson:"videotitle"`
-	Videodesc   string `json:"videodesc" bson:"videodesc"`
-	Videosize   int64  `json:"videosize" bson:"videosize"`
-	Videofileid string `json:"videofileid" bson:"videofileid"`
-	// Videobyte      []byte        `json:"videobyte" bson:"videobyte"`
+	Videoid        string        `json:"videoid" bson:"videoid"`
+	Videoauthor    string        `json:"videoauthor" bson:"videoauthor"`
+	Videotitle     string        `json:"videotitle" bson:"videotitle"`
+	Videodesc      string        `json:"videodesc" bson:"videodesc"`
+	Videosize      int64         `json:"videosize" bson:"videosize"`
+	Videofileid    string        `json:"videofileid" bson:"videofileid"`
+	Videolikes     int           `json:"videolikes" bson:"videolikes"`
+	Videodislikes  int           `json:"videodislikes" bson:"videodislikes"`
 	Videocomments  []interface{} `json:"videocomments" bson:"videocomments"`
 	Videothumbnail any           `json:"videothumbnail" bson:"videothumbnail"`
 }

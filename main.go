@@ -33,7 +33,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// var db = client.Database("streamdb")
+	var db = client.Database("streamdb")
 
 	videoCollection = client.Database("streamdb").Collection("videos")
 	usersCollection = client.Database("streamdb").Collection("users")
@@ -43,8 +43,23 @@ func main() {
 	r.Static("/static", "./static")
 
 	r.GET("/", func(ctx *gin.Context) {
-		ctx.HTML(200, "home.html", nil)
+		var videos []Video
+		cursor, err := videoCollection.Find(ctx, bson.M{})
+		if err != nil {
+			log.Println("Error finding videos:", err)
+			ctx.JSON(500, gin.H{"Error": "Failed to retrieve videos"})
+			return
+		}
+		defer cursor.Close(ctx)
+
+		if err := cursor.All(ctx, &videos); err != nil {
+			log.Println("Error decoding videos:", err)
+			ctx.JSON(500, gin.H{"Error": "Failed to decode video data"})
+			return
+		}
+		ctx.HTML(200, "home.html", gin.H{"videos": videos})
 	})
+
 	r.GET("/signup", func(ctx *gin.Context) {
 		ctx.HTML(200, "signup.html", nil)
 	})
@@ -142,12 +157,21 @@ func main() {
 			return
 		}
 
-		// for _, video := range userVideos {
-		// 	video.Videothumbnail = base64Thumbnail
-		// 	fmt.Println(video.Videothumbnail)
-		// }
-
 		ctx.HTML(200, "profile.html", gin.H{"username": session.Values["username"].(string), "videos": userVideos})
+	})
+
+	r.GET("/watch/:video_id", func(ctx *gin.Context) {
+		videoid := ctx.Param("video_id")
+		var videoToPlay Video
+		videoCollection.FindOne(ctx, bson.M{"videoid": videoid}).Decode(&videoToPlay)
+		videoBytes, _ := GetFromGridFS(videoToPlay.Videofileid, db)
+
+		ctx.Header("Content-Type", "video/mp4") // Set MIME type
+		ctx.Header("Accept-Ranges", "bytes")    // Enable range requests
+		ctx.Writer.WriteHeader(200)             // HTTP 200 OK
+		ctx.Writer.Write(videoBytes)
+
+		fmt.Println(videoid)
 	})
 
 	fmt.Println("Starting the Server.")
