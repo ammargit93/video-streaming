@@ -39,7 +39,6 @@ func GenerateThumbnail(savedFilePath string, saveFileName string) error {
 	return nil
 }
 
-// Read and save thumbnail into local storage.
 func ReadAndSaveThumbnail(ctx *gin.Context, file *multipart.FileHeader) (string, string) {
 	savePath := filepath.Join("C:/Users/Ammar1/go/video-streaming/videos/", file.Filename)
 	imgPath := filepath.Join("C:/Users/Ammar1/go/video-streaming/static/images/", file.Filename[:len(file.Filename)-3]+"png")

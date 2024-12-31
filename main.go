@@ -164,14 +164,31 @@ func main() {
 		videoid := ctx.Param("video_id")
 		var videoToPlay Video
 		videoCollection.FindOne(ctx, bson.M{"videoid": videoid}).Decode(&videoToPlay)
-		videoBytes, _ := GetFromGridFS(videoToPlay.Videofileid, db)
+		// videoBytes, _ := GetFromGridFS(videoToPlay.Videofileid, db)
+
+		// ctx.Header("Content-Type", "video/mp4") // Set MIME type
+		// ctx.Header("Accept-Ranges", "bytes")    // Enable range requests
+		// ctx.Writer.WriteHeader(200)             // HTTP 200 OK
+		// ctx.Writer.Write(videoBytes)
+		ctx.HTML(200, "basevideoplayer.html", gin.H{
+			"videotitle":  videoToPlay.Videotitle,
+			"videodesc":   videoToPlay.Videodesc,
+			"videoid":     videoToPlay.Videofileid,
+			"videoauthor": videoToPlay.Videoauthor,
+		})
+
+	})
+
+	r.GET("/video/:video_id", func(ctx *gin.Context) {
+		videoid := ctx.Param("video_id")
+		var videoToPlay Video
+		videoCollection.FindOne(ctx, bson.M{"videoid": videoid}).Decode(&videoToPlay)
+		videoBytes, _ := GetFromGridFS(videoid, db)
 
 		ctx.Header("Content-Type", "video/mp4") // Set MIME type
 		ctx.Header("Accept-Ranges", "bytes")    // Enable range requests
 		ctx.Writer.WriteHeader(200)             // HTTP 200 OK
 		ctx.Writer.Write(videoBytes)
-
-		fmt.Println(videoid)
 	})
 
 	fmt.Println("Starting the Server.")

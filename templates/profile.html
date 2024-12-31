@@ -30,14 +30,16 @@
                 <!-- Render videos if the array is not empty -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                     {{range .videos}}
-                    <div class="bg-gray-100 shadow-lg rounded-md overflow-hidden">
-                        <img src="../static/images/{{.Videothumbnail}}" class="w-full h-48 object-cover">
+                    <a href="/watch/{{.Videoid}}">
+                        <div class="bg-gray-100 shadow-lg rounded-md overflow-hidden">
+                            <img src="../static/images/{{.Videothumbnail}}" class="w-full h-48 object-cover">
 
-                        <div class="p-4">
-                            <h3 class="text-lg font-semibold text-gray-800">{{.Videotitle}}</h3>
-                            <p class="text-sm text-gray-600 truncate">{{.Videodesc}}</p>
+                            <div class="p-4">
+                                <h3 class="text-lg font-semibold text-gray-800">{{.Videotitle}}</h3>
+                                <p class="text-sm text-gray-600 truncate">{{.Videodesc}}</p>
+                            </div>
                         </div>
-                    </div>
+                    </a>
                     {{end}}
                 </div>
                 {{else}}
