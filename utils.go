@@ -5,6 +5,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
+
+	// "io"
 	"log"
 	"mime/multipart"
 
@@ -17,15 +20,15 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+
+	// "go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/gridfs"
+	// "go.mongodb.org/mongo-driver/mongo/gridfs"
 	"golang.org/x/crypto/bcrypt"
 )
 
 const (
 	ffmpegPath = "C:/Users/Ammar1/Downloads/ffmpeg-master-latest-win64-gpl/ffmpeg-master-latest-win64-gpl/bin/ffmpeg"
-	// Name of the file in the bucket
 )
 
 func CheckPasswordHash(password, hash string) bool {
@@ -47,14 +50,12 @@ func GenerateThumbnail(savedFilePath string, imageName string) error {
 		fmt.Println("FFmpeg stderr:", stderr.String())
 		return err
 	}
-	// os.Remove("thumbnail.png")
 	return nil
 }
 
 func ReadAndSaveThumbnail(ctx *gin.Context, file *multipart.FileHeader) (string, string) {
 	var key = "images/"
 	bucket := "aws-video-streaming-image-bucket"
-
 	savePath := filepath.Join("C:/Users/Ammar1/go/video-streaming/videos/", file.Filename)
 	imgPath := file.Filename[:len(file.Filename)-3] + "png"
 
@@ -97,46 +98,41 @@ func ReadAndSaveThumbnail(ctx *gin.Context, file *multipart.FileHeader) (string,
 	return file.Filename[:len(file.Filename)-3] + "png", ""
 }
 
-func UploadToGridFS(fileHeader *multipart.FileHeader, db *mongo.Database) (string, error) {
-	file, err := fileHeader.Open()
+func GetVideoFromS3(id string, ctx *gin.Context) {
+	var video Video
+	videoCollection.FindOne(ctx, bson.M{"videoid": id}).Decode(&video)
+
+	bucket := "aws-video-streaming-image-bucket"
+	key := "videos/" + video.Videotitle
+
+	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("ap-south-1"))
 	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-	bucket, err := gridfs.NewBucket(db) // Replace `db` with your MongoDB database instance
-	if err != nil {
-		return "", err
-	}
-	uploadStream, err := bucket.OpenUploadStream(fileHeader.Filename)
-	if err != nil {
-		return "", err
-	}
-	defer uploadStream.Close()
-	if _, err := io.Copy(uploadStream, file); err != nil {
-		return "", err
+		log.Fatalf("failed to load configuration: %v", err)
 	}
 
-	return uploadStream.FileID.(primitive.ObjectID).Hex(), nil
-}
-
-func GetFromGridFS(fileID string, db *mongo.Database) ([]byte, error) {
-	bucket, err := gridfs.NewBucket(db)
-	if err != nil {
-		return nil, err
+	client := s3.NewFromConfig(cfg)
+	input := &s3.GetObjectInput{
+		Bucket: &bucket,
+		Key:    &key,
 	}
 
-	objectID, err := primitive.ObjectIDFromHex(fileID)
+	result, err := client.GetObject(context.TODO(), input)
 	if err != nil {
-		return nil, err
+		log.Printf("Failed to get video from S3: %v", err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve video"})
+		return
 	}
+	defer result.Body.Close()
 
-	var buf bytes.Buffer
-	_, err = bucket.DownloadToStream(objectID, &buf)
+	ctx.Header("Content-Type", "video/mp4")
+	ctx.Header("Accept-Ranges", "bytes")
+	ctx.Writer.WriteHeader(http.StatusOK)
+
+	_, err = io.Copy(ctx.Writer, result.Body)
 	if err != nil {
-		return nil, err
+		log.Printf("Error while streaming video: %v", err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to stream video"})
 	}
-
-	return buf.Bytes(), nil
 }
 
 func VideoExists(ctx *gin.Context, video Video) bool {
@@ -144,7 +140,6 @@ func VideoExists(ctx *gin.Context, video Video) bool {
 	err := videoCollection.FindOne(ctx, bson.M{
 		"videoauthor": video.Videoauthor,
 		"videotitle":  video.Videotitle,
-		"videosize":   video.Videosize,
 	}).Decode(&existingVideo)
 
 	if err != nil {
@@ -156,4 +151,44 @@ func VideoExists(ctx *gin.Context, video Video) bool {
 	}
 
 	return true
+}
+
+func SaveVideoToS3(file *multipart.FileHeader, ctx *gin.Context) {
+	key := "videos/"
+	bucket := "aws-video-streaming-image-bucket"
+
+	savePath := filepath.Join("C:/Users/Ammar1/go/video-streaming/videos/", file.Filename)
+	if err := ctx.SaveUploadedFile(file, savePath); err != nil {
+		log.Println("Error saving uploaded file:", err)
+		ctx.JSON(500, gin.H{"Error": "Failed to save uploaded file"})
+	}
+
+	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("ap-south-1"))
+	if err != nil {
+		log.Fatalf("failed to load configuration: %v", err)
+	}
+
+	client := s3.NewFromConfig(cfg)
+
+	newfile, err := os.Open(savePath)
+	if err != nil {
+		log.Fatalf("failed to open file %q: %v", file.Filename, err)
+	}
+	defer newfile.Close()
+
+	key += file.Filename
+	input := &s3.PutObjectInput{
+		Bucket:      &bucket,
+		Key:         &key,
+		Body:        newfile,
+		ContentType: aws.String("image/png"), // Update based on your file type
+	}
+	_, err = client.PutObject(context.TODO(), input)
+	if err != nil {
+		log.Fatalf("failed to upload file: %v", err)
+	}
+
+	fmt.Printf("Successfully uploaded %q to bucket %q\n", key, bucket)
+	os.Remove(savePath)
+
 }

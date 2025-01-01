@@ -1,5 +1,9 @@
 package main
 
+import (
+	"time"
+)
+
 type User struct {
 	Userid      string  `json:"userid" bson:"userid"`
 	Username    string  `json:"username" bson:"username"`
@@ -11,17 +15,24 @@ type User struct {
 }
 
 type Video struct {
-	Videoid        string        `json:"videoid" bson:"videoid"`
-	Videoauthor    string        `json:"videoauthor" bson:"videoauthor"`
-	Videotitle     string        `json:"videotitle" bson:"videotitle"`
-	Videodesc      string        `json:"videodesc" bson:"videodesc"`
-	Videosize      int64         `json:"videosize" bson:"videosize"`
-	Videofileid    string        `json:"videofileid" bson:"videofileid"`
-	Videocomments  []interface{} `json:"videocomments" bson:"videocomments"` // {"uuid-string": "Actual parent comment"}
-	Videothumbnail any           `json:"videothumbnail" bson:"videothumbnail"`
+	Videoid        string    `json:"videoid" bson:"videoid"`
+	Videoauthor    string    `json:"videoauthor" bson:"videoauthor"`
+	Videotitle     string    `json:"videotitle" bson:"videotitle"`
+	Videodesc      string    `json:"videodesc" bson:"videodesc"`
+	Videocomments  []Comment `json:"videocomments" bson:"videocomments"`
+	Videothumbnail any       `json:"videothumbnail" bson:"videothumbnail"`
 }
 
-type Comments struct {
-	CommentID       string `json:"commentid" bson:"commentid"`
-	ParentCommentID string `json:"parentcommentid" bson:"parentcommentid"`
+type Comment struct {
+	CommentID     string    `json:"commentid" bson:"commentid"`
+	CommentText   string    `json:"commenttext" bson:"commenttext"`
+	CommentAuthor string    `json:"commentauthor" bson:"commentauthor"`
+	CommentDate   time.Time `json:"commentdate" bson:"commentdate"`
+}
+
+type Reply struct {
+	ReplyID       string    `json:"replyid" bson:"replyid"`
+	ReplyText     string    `json:"replytext" bson:"replytext"`
+	ReplyDate     time.Time `json:"replydate" bson:"replydate"`
+	ReplyParentID string    `json:"replyparentid" bson:"replyparentid"` //Foreign key corresponding to Comment.CommentID
 }

@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -16,11 +17,12 @@ import (
 )
 
 var (
-	client          *mongo.Client
-	videoCollection *mongo.Collection
-	usersCollection *mongo.Collection
-	store           = sessions.NewCookieStore([]byte("secret-key"))
-	err             error
+	client            *mongo.Client
+	videoCollection   *mongo.Collection
+	usersCollection   *mongo.Collection
+	commentCollection *mongo.Collection
+	store             = sessions.NewCookieStore([]byte("secret-key"))
+	err               error
 )
 
 func main() {
@@ -34,10 +36,11 @@ func main() {
 		log.Fatal(err)
 	}
 
-	var db = client.Database("streamdb")
+	// var db = client.Database("streamdb")
 
 	videoCollection = client.Database("streamdb").Collection("videos")
 	usersCollection = client.Database("streamdb").Collection("users")
+	commentCollection = client.Database("streamdb").Collection("comments")
 
 	r := gin.Default()
 	r.LoadHTMLGlob("templates/*.html")
@@ -111,14 +114,14 @@ func main() {
 		}
 		thumbnail, _ := ReadAndSaveThumbnail(ctx, file)
 		os.Remove(file.Filename[:len(file.Filename)-3] + "png")
-		fileID, _ := UploadToGridFS(file, client.Database("streamdb"))
+		// fileID, _ := UploadToGridFS(file, client.Database("streamdb"))
+
+		SaveVideoToS3(file, ctx)
 		var video Video = Video{
 			Videoid:        uuid.New().String(),
 			Videoauthor:    session.Values["username"].(string),
 			Videotitle:     file.Filename,
 			Videodesc:      ctx.PostForm("video_description"),
-			Videosize:      file.Size,
-			Videofileid:    fileID,
 			Videothumbnail: thumbnail,
 		}
 		if file.Header.Get("Content-Type") != "video/mp4" {
@@ -144,18 +147,11 @@ func main() {
 			return
 		}
 		var userVideos []Video
-		cursor, err := videoCollection.Find(ctx, bson.M{"videoauthor": session.Values["username"].(string)})
-		if err != nil {
-			log.Println("Error finding videos:", err)
-			ctx.JSON(500, gin.H{"Error": "Failed to retrieve videos"})
-			return
-		}
+		cursor, _ := videoCollection.Find(ctx, bson.M{"videoauthor": session.Values["username"].(string)})
+
 		defer cursor.Close(ctx)
-		if err := cursor.All(ctx, &userVideos); err != nil {
-			log.Println("Error decoding videos:", err)
-			ctx.JSON(500, gin.H{"Error": "Failed to decode video data"})
-			return
-		}
+		cursor.All(ctx, &userVideos)
+
 		ctx.HTML(200, "profile.html", gin.H{"username": session.Values["username"].(string), "videos": userVideos})
 	})
 
@@ -163,34 +159,79 @@ func main() {
 		videoid := ctx.Param("video_id")
 		var videoToPlay Video
 		var videos []Video
+		var comments []Comment
+
 		videoCollection.FindOne(ctx, bson.M{"videoid": videoid}).Decode(&videoToPlay)
+
 		cursor, _ := videoCollection.Find(ctx, bson.M{})
 		cursor.All(ctx, &videos)
+		cursor.Close(ctx)
 
-		defer cursor.Close(ctx)
+		// // Fetch comments for this video
+		// cursor, _ = commentCollection.Find(ctx, bson.M{"videoid": videoid})
+		// cursor.All(ctx, &comments)
+		// cursor.Close(ctx)
 
 		ctx.HTML(200, "basevideoplayer.html", gin.H{
-			"videotitle":  videoToPlay.Videotitle,
-			"videodesc":   videoToPlay.Videodesc,
-			"videoid":     videoToPlay.Videofileid,
-			"videoauthor": videoToPlay.Videoauthor,
-			"videos":      videos,
+			"videotitle":    videoToPlay.Videotitle,
+			"videodesc":     videoToPlay.Videodesc,
+			"videoauthor":   videoToPlay.Videoauthor,
+			"videos":        videos,
+			"videocomments": comments,
+		})
+	})
+
+	r.POST("/watch/:video_id", func(ctx *gin.Context) {
+		comment := ctx.PostForm("comment")
+		videoid := ctx.Param("video_id")
+		var video Video
+
+		videoCollection.FindOne(ctx, bson.M{"videoid": videoid}).Decode(&video)
+		session, _ := store.Get(ctx.Request, "curr-session")
+
+		newComment := Comment{
+			CommentID:     uuid.New().String(),
+			CommentText:   comment,
+			CommentAuthor: session.Values["username"].(string),
+			CommentDate:   time.Now(),
+		}
+		commentCollection.InsertOne(ctx, newComment)
+		video.Videocomments = append(video.Videocomments, newComment)
+		_, err = videoCollection.UpdateOne(ctx, bson.M{"videoid": videoid}, bson.M{
+			"$set": bson.M{"videocomments": video.Videocomments},
 		})
 
+		var videos []Video
+		cursor, _ := videoCollection.Find(ctx, bson.M{})
+		cursor.All(ctx, &videos)
+		cursor.Close(ctx)
+
+		var comments []Comment
+		cursor, _ = commentCollection.Find(ctx, bson.M{"videoid": videoid})
+		cursor.All(ctx, &comments)
+		cursor.Close(ctx)
+
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		ctx.Redirect(http.StatusFound, "/watch/"+videoid)
+
 	})
 
-	r.GET("/video/:video_id", func(ctx *gin.Context) {
-		videoid := ctx.Param("video_id")
-		var videoToPlay Video
-		videoCollection.FindOne(ctx, bson.M{"videoid": videoid}).Decode(&videoToPlay)
-		videoBytes, _ := GetFromGridFS(videoid, db)
+	// r.GET("/video/:video_id", func(ctx *gin.Context) {
+	// 	videoid := ctx.Param("video_id")
+	// 	var videoToPlay Video
+	// 	videoCollection.FindOne(ctx, bson.M{"videoid": videoid}).Decode(&videoToPlay)
+	// 	videoBytes, _ := GetFromGridFS(videoid, db)
 
-		ctx.Header("Content-Type", "video/mp4")
-		ctx.Header("Accept-Ranges", "bytes")
-		ctx.Writer.WriteHeader(200)
-		ctx.Writer.Write(videoBytes)
-	})
+	// 	ctx.Header("Content-Type", "video/mp4")
+	// 	ctx.Header("Accept-Ranges", "bytes")
+	// 	ctx.Writer.WriteHeader(200)
+	// 	ctx.Writer.Write(videoBytes)
+	// })
 
 	fmt.Println("Starting the Server.")
 	r.Run(":8080")
+
 }
