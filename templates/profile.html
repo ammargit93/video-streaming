@@ -32,7 +32,7 @@
                     {{range .videos}}
                     <a href="/watch/{{.Videoid}}">
                         <div class="bg-gray-100 shadow-lg rounded-md overflow-hidden">
-                            <img src="../static/images/{{.Videothumbnail}}" class="w-full h-48 object-cover">
+                            <img src="https://aws-video-streaming-image-bucket.s3.ap-south-1.amazonaws.com/images/{{.Videothumbnail}}" class="w-full h-48 object-cover">
 
                             <div class="p-4">
                                 <h3 class="text-lg font-semibold text-gray-800">{{.Videotitle}}</h3>

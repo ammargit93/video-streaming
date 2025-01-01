@@ -11,14 +11,17 @@ type User struct {
 }
 
 type Video struct {
-	Videoid             string `json:"videoid" bson:"videoid"`
-	Videoauthor         string `json:"videoauthor" bson:"videoauthor"`
-	Videotitle          string `json:"videotitle" bson:"videotitle"`
-	Videodesc           string `json:"videodesc" bson:"videodesc"`
-	Videosize           int64  `json:"videosize" bson:"videosize"`
-	Videofileid         string `json:"videofileid" bson:"videofileid"`
-	Videolikes          int    `json:"videolikes" bson:"videolikes"`
-	Videodislikes       int    `json:"videodislikes" bson:"videodislikes"`
-	Videoparentcomments string `json:"videoparentcomments" bson:"videoparentcomments"`
-	Videothumbnail      any    `json:"videothumbnail" bson:"videothumbnail"`
+	Videoid        string        `json:"videoid" bson:"videoid"`
+	Videoauthor    string        `json:"videoauthor" bson:"videoauthor"`
+	Videotitle     string        `json:"videotitle" bson:"videotitle"`
+	Videodesc      string        `json:"videodesc" bson:"videodesc"`
+	Videosize      int64         `json:"videosize" bson:"videosize"`
+	Videofileid    string        `json:"videofileid" bson:"videofileid"`
+	Videocomments  []interface{} `json:"videocomments" bson:"videocomments"` // {"uuid-string": "Actual parent comment"}
+	Videothumbnail any           `json:"videothumbnail" bson:"videothumbnail"`
+}
+
+type Comments struct {
+	CommentID       string `json:"commentid" bson:"commentid"`
+	ParentCommentID string `json:"parentcommentid" bson:"parentcommentid"`
 }

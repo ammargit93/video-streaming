@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -109,6 +110,7 @@ func main() {
 			return
 		}
 		thumbnail, _ := ReadAndSaveThumbnail(ctx, file)
+		os.Remove(file.Filename[:len(file.Filename)-3] + "png")
 		fileID, _ := UploadToGridFS(file, client.Database("streamdb"))
 		var video Video = Video{
 			Videoid:        uuid.New().String(),
@@ -119,16 +121,17 @@ func main() {
 			Videofileid:    fileID,
 			Videothumbnail: thumbnail,
 		}
-
 		if file.Header.Get("Content-Type") != "video/mp4" {
 			ctx.JSON(400, gin.H{"Error": "Only video/mp4 files allowed"})
 			return
 		}
-		_, err = videoCollection.InsertOne(ctx, video)
-		if err != nil {
-			log.Println("Error inserting video:", err)
-			ctx.JSON(500, gin.H{"Error": "Video insertion failed"})
-			return
+		if !VideoExists(ctx, video) {
+			_, err = videoCollection.InsertOne(ctx, video)
+			if err != nil {
+				log.Println("Error inserting video:", err)
+				ctx.JSON(500, gin.H{"Error": "Video insertion failed"})
+				return
+			}
 		}
 
 		var user User
@@ -140,9 +143,7 @@ func main() {
 			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-
 		var userVideos []Video
-
 		cursor, err := videoCollection.Find(ctx, bson.M{"videoauthor": session.Values["username"].(string)})
 		if err != nil {
 			log.Println("Error finding videos:", err)
@@ -150,31 +151,30 @@ func main() {
 			return
 		}
 		defer cursor.Close(ctx)
-
 		if err := cursor.All(ctx, &userVideos); err != nil {
 			log.Println("Error decoding videos:", err)
 			ctx.JSON(500, gin.H{"Error": "Failed to decode video data"})
 			return
 		}
-
 		ctx.HTML(200, "profile.html", gin.H{"username": session.Values["username"].(string), "videos": userVideos})
 	})
 
 	r.GET("/watch/:video_id", func(ctx *gin.Context) {
 		videoid := ctx.Param("video_id")
 		var videoToPlay Video
+		var videos []Video
 		videoCollection.FindOne(ctx, bson.M{"videoid": videoid}).Decode(&videoToPlay)
-		// videoBytes, _ := GetFromGridFS(videoToPlay.Videofileid, db)
+		cursor, _ := videoCollection.Find(ctx, bson.M{})
+		cursor.All(ctx, &videos)
 
-		// ctx.Header("Content-Type", "video/mp4") // Set MIME type
-		// ctx.Header("Accept-Ranges", "bytes")    // Enable range requests
-		// ctx.Writer.WriteHeader(200)             // HTTP 200 OK
-		// ctx.Writer.Write(videoBytes)
+		defer cursor.Close(ctx)
+
 		ctx.HTML(200, "basevideoplayer.html", gin.H{
 			"videotitle":  videoToPlay.Videotitle,
 			"videodesc":   videoToPlay.Videodesc,
 			"videoid":     videoToPlay.Videofileid,
 			"videoauthor": videoToPlay.Videoauthor,
+			"videos":      videos,
 		})
 
 	})
@@ -185,9 +185,9 @@ func main() {
 		videoCollection.FindOne(ctx, bson.M{"videoid": videoid}).Decode(&videoToPlay)
 		videoBytes, _ := GetFromGridFS(videoid, db)
 
-		ctx.Header("Content-Type", "video/mp4") // Set MIME type
-		ctx.Header("Accept-Ranges", "bytes")    // Enable range requests
-		ctx.Writer.WriteHeader(200)             // HTTP 200 OK
+		ctx.Header("Content-Type", "video/mp4")
+		ctx.Header("Accept-Ranges", "bytes")
+		ctx.Writer.WriteHeader(200)
 		ctx.Writer.Write(videoBytes)
 	})
 

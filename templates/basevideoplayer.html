@@ -29,74 +29,61 @@
         </div>
     </nav>
 
-    <div class="max-w-3xl pl-4 py-6">
+    <div class="max-w-7xl mx-auto px-4 py-6 grid grid-cols-12 gap-4">
 
-        <!-- Video Player -->
-        <div class="relative mb-4">
-            <video controls class="w-full h-auto shadow-lg">
-                <source src="/video/{{ .videoid }}" type="video/mp4">
-                Your browser does not support the video tag.
-            </video>
-        </div>
-
-        <!-- Title, Author, and Description -->
-        <div class="bg-white p-4 shadow-md w-full">
-            <h1 class="text-lg font-semibold text-gray-900 mb-1">{{ .videotitle }}</h1>
-            <p class="text-gray-500 text-sm mb-2">By: {{ .videoauthor }}</p>
-            <div>
-                <p id="videoDesc" class="text-gray-600 hidden">{{ .videodesc }}</p>
-                <button id="toggleDesc" class="text-blue-500 hover:underline focus:outline-none text-sm">
-                    Read More
-                </button>
+        <!-- Main Video Player Section -->
+        <div class="col-span-8">
+            <div class="relative mb-4">
+                <video controls class="w-full h-auto shadow-lg">
+                    <source src="/video/{{ .videoid }}" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+            <div class="bg-white p-4 shadow-md">
+                <h1 class="text-lg font-semibold text-gray-900">{{ .videotitle }}</h1>
+                <p class="text-gray-500 text-sm mb-2">By: {{ .videoauthor }}</p>
+                <div>
+                    <p id="videoDesc" class="text-gray-600 hidden">{{ .videodesc }}</p>
+                    <button id="toggleDesc" class="text-blue-500 hover:underline text-sm">Read More</button>
+                </div>
+                <!-- Comments Section -->
+                <div class="mt-4">
+                    <button id="toggleComments" class="text-blue-500 hover:underline text-sm">Show Comments</button>
+                    <div id="commentsSection" class="hidden mt-4 bg-gray-50 p-4 rounded shadow">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-2">Comments</h3>
+                        <div class="space-y-4">
+                            <!-- Replace with dynamic comments -->
+                            <div class="border-b pb-2">
+                                <p class="text-sm font-semibold">User1</p>
+                                <p class="text-gray-600 text-sm">Great video! Really enjoyed it.</p>
+                            </div>
+                            <div class="border-b pb-2">
+                                <p class="text-sm font-semibold">User2</p>
+                                <p class="text-gray-600 text-sm">Thanks for sharing this amazing content!</p>
+                            </div>
+                        </div>
+                        <form class="mt-4">
+                            <textarea placeholder="Add a comment..." class="w-full p-2 border rounded focus:outline-none focus:ring focus:ring-gray-300"></textarea>
+                            <button type="submit" class="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Submit</button>
+                        </form>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <!-- Like, Dislike, and Add to Playlist Section -->
-        <div class="flex items-center space-x-3 mt-4">
-            <button class="flex items-center space-x-2 px-3 py-1 bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 focus:outline-none rounded">
-                <img src="../static/images/like.png" class="w-5 h-5" alt="Like Icon">
-                <!-- <span>Like</span> -->
-            </button>
-            
-            <button class="flex items-center space-x-2 px-3 py-1 bg-red-600 text-white text-sm font-medium hover:bg-red-700 focus:outline-none rounded">
-                <img src="../static/images/icons8-facebook-like-64.png" class="w-5 h-5" alt="Dislike Icon">
-                <!-- <span>Dislike</span> -->
-            </button>
-            
-            <button class="flex items-center space-x-2 px-3 py-1 bg-gray-800 text-white text-sm font-medium hover:bg-gray-900 focus:outline-none rounded">
-                ➕ <span>Add to Playlist</span>
-            </button>
-        </div>
-
-        <!-- Comment Section -->
-        <div class="mt-6 w-full">
-            <button id="toggleComments" class="text-blue-500 hover:underline focus:outline-none mb-3 text-sm">
-                Show Comments
-            </button>
-            <div id="commentsSection" class="hidden bg-white p-4 shadow-md">
-                <h2 class="text-lg font-semibold text-gray-800 mb-4">Comments</h2>
-
-                <!-- Comment Input -->
-                <div class="flex items-center space-x-3 mb-4">
-                    <input type="text" class="w-full px-3 py-2 border-gray-300 border rounded focus:outline-none focus:ring-2 focus:ring-blue-600 text-sm" placeholder="Add a comment...">
-                    <button class="px-3 py-2 bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 focus:outline-none rounded">
-                        Post
-                    </button>
-                </div>
-
-                <!-- Comments List -->
-                <div>
-                    <!-- Example Comment -->
-                    <div class="flex items-start space-x-3 mb-3">
-                        <div class="flex-shrink-0">
-                            <img src="https://via.placeholder.com/40" alt="User Avatar" class="w-10 h-10 rounded-full">
-                        </div>
-                        <div class="flex flex-col">
-                            <p class="font-semibold text-gray-800 text-sm">User Name</p>
-                            <p class="text-gray-600 text-sm">This is an amazing video! Thanks for sharing!</p>
-                        </div>
+        <!-- Right Pane for Related Videos -->
+        <div class="col-span-4">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Related Videos</h2>
+            <div class="space-y-4">
+                {{ range .videos }}
+                <a href="/watch/{{ .Videoid }}" class="flex items-center space-x-4 bg-white p-2 rounded shadow hover:bg-gray-100">
+                    <img src="https://aws-video-streaming-image-bucket.s3.ap-south-1.amazonaws.com/images/{{ .Videothumbnail }}" alt="{{ .Videotitle }}" class="w-16 h-16 object-cover rounded">
+                    <div>
+                        <p class="text-sm font-semibold text-gray-800">{{ .Videotitle }}</p>
+                        <p class="text-xs text-gray-500">By: {{ .Videoauthor }}</p>
                     </div>
-                </div>
+                </a>
+                {{ end }}
             </div>
         </div>
 
@@ -129,6 +116,5 @@
             }
         });
     </script>
-
 </body>
 </html>
