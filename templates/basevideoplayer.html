@@ -56,9 +56,9 @@
                             {{ if .videocomments }}
                                 {{ range .videocomments }}
                                 <div class="border-b pb-2">
-                                    <p class="text-sm font-semibold">{{ .commentauthor }}</p>
-                                    <p class="text-gray-600 text-sm">{{ .commenttext }}</p>
-                                    <p class="text-xs text-gray-400">{{ .Commentdate }}</p>
+                                    <p class="text-sm font-semibold">{{ .CommentAuthor }}</p>
+                                    <p class="text-gray-600 text-sm">{{ .CommentText }}</p>
+                                    <p class="text-xs text-gray-400">{{ .CommentDate }}</p>
                                 </div>
                                 {{ end }}
                             {{ else }}

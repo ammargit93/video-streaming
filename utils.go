@@ -189,6 +189,6 @@ func SaveVideoToS3(file *multipart.FileHeader, ctx *gin.Context) {
 	}
 
 	fmt.Printf("Successfully uploaded %q to bucket %q\n", key, bucket)
-	os.Remove(savePath)
+	os.Remove("videos/" + file.Filename)
 
 }

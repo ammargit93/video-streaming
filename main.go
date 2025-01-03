@@ -114,6 +114,7 @@ func main() {
 		}
 		thumbnail, _ := ReadAndSaveThumbnail(ctx, file)
 		os.Remove(file.Filename[:len(file.Filename)-3] + "png")
+		// os.Remove("videos/" + file.Filename)
 		// fileID, _ := UploadToGridFS(file, client.Database("streamdb"))
 
 		SaveVideoToS3(file, ctx)
@@ -168,13 +169,14 @@ func main() {
 		cursor.Close(ctx)
 
 		// // Fetch comments for this video
-		// cursor, _ = commentCollection.Find(ctx, bson.M{"videoid": videoid})
-		// cursor.All(ctx, &comments)
-		// cursor.Close(ctx)
+		cursor, _ = commentCollection.Find(ctx, bson.M{"commentvideoid": videoid})
+		cursor.All(ctx, &comments)
+		cursor.Close(ctx)
 
 		ctx.HTML(200, "basevideoplayer.html", gin.H{
 			"videotitle":    videoToPlay.Videotitle,
 			"videodesc":     videoToPlay.Videodesc,
+			"videoid":       videoToPlay.Videoid,
 			"videoauthor":   videoToPlay.Videoauthor,
 			"videos":        videos,
 			"videocomments": comments,
@@ -190,17 +192,19 @@ func main() {
 		session, _ := store.Get(ctx.Request, "curr-session")
 
 		newComment := Comment{
-			CommentID:     uuid.New().String(),
-			CommentText:   comment,
-			CommentAuthor: session.Values["username"].(string),
-			CommentDate:   time.Now(),
+			CommentID:      uuid.New().String(),
+			CommentVideoID: videoid,
+			CommentText:    comment,
+			CommentAuthor:  session.Values["username"].(string),
+			CommentDate:    time.Now(),
 		}
+		fmt.Println("HERE")
 		commentCollection.InsertOne(ctx, newComment)
 		video.Videocomments = append(video.Videocomments, newComment)
 		_, err = videoCollection.UpdateOne(ctx, bson.M{"videoid": videoid}, bson.M{
 			"$set": bson.M{"videocomments": video.Videocomments},
 		})
-
+		fmt.Println("NOW HERE")
 		var videos []Video
 		cursor, _ := videoCollection.Find(ctx, bson.M{})
 		cursor.All(ctx, &videos)
@@ -214,7 +218,7 @@ func main() {
 		if err != nil {
 			fmt.Println(err)
 		}
-
+		fmt.Println("NOW HERE HERE")
 		ctx.Redirect(http.StatusFound, "/watch/"+videoid)
 
 	})

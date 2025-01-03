@@ -24,10 +24,11 @@ type Video struct {
 }
 
 type Comment struct {
-	CommentID     string    `json:"commentid" bson:"commentid"`
-	CommentText   string    `json:"commenttext" bson:"commenttext"`
-	CommentAuthor string    `json:"commentauthor" bson:"commentauthor"`
-	CommentDate   time.Time `json:"commentdate" bson:"commentdate"`
+	CommentVideoID string    `json:"commentvideoid" bson:"commentvideoid"`
+	CommentID      string    `json:"commentid" bson:"commentid"`
+	CommentText    string    `json:"commenttext" bson:"commenttext"`
+	CommentAuthor  string    `json:"commentauthor" bson:"commentauthor"`
+	CommentDate    time.Time `json:"commentdate" bson:"commentdate"`
 }
 
 type Reply struct {
