@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"net/http"
+	"time"
 
-	// "io"
 	"log"
 	"mime/multipart"
 
@@ -19,11 +19,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/gin-gonic/gin"
+	"github.com/go-redis/redis"
 	"go.mongodb.org/mongo-driver/bson"
 
-	// "go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
-	// "go.mongodb.org/mongo-driver/mongo/gridfs"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -62,7 +61,6 @@ func ReadAndSaveThumbnail(ctx *gin.Context, file *multipart.FileHeader) (string,
 	if err := ctx.SaveUploadedFile(file, savePath); err != nil {
 		log.Println("Error saving uploaded file:", err)
 		ctx.JSON(500, gin.H{"Error": "Failed to save uploaded file"})
-
 	}
 	if err := GenerateThumbnail(savePath, imgPath); err != nil {
 		ctx.JSON(500, gin.H{"Error": "Error generating thumbnail"})
@@ -74,9 +72,10 @@ func ReadAndSaveThumbnail(ctx *gin.Context, file *multipart.FileHeader) (string,
 
 	client := s3.NewFromConfig(cfg)
 
-	newfile, err := os.Open(file.Filename[:len(file.Filename)-3] + "png")
+	// Upload the thumbnail to S3
+	newfile, err := os.Open(imgPath)
 	if err != nil {
-		log.Fatalf("failed to open file %q: %v", file.Filename[:len(file.Filename)-3]+"png", err)
+		log.Fatalf("failed to open file %q: %v", imgPath, err)
 	}
 	defer newfile.Close()
 
@@ -92,46 +91,90 @@ func ReadAndSaveThumbnail(ctx *gin.Context, file *multipart.FileHeader) (string,
 		log.Fatalf("failed to upload file: %v", err)
 	}
 
-	fmt.Printf("Successfully uploaded %q to bucket %q\n", key, bucket)
-	os.Remove(savePath)
+	fmt.Printf("Successfully uploaded thumbnail %q to bucket %q\n", key, bucket)
 
-	return file.Filename[:len(file.Filename)-3] + "png", ""
+	// Remove the local video and thumbnail file after upload
+	// os.Remove(savePath)
+	os.Remove(imgPath)
+
+	return imgPath, ""
 }
 
+var redisClient = redis.NewClient(&redis.Options{
+	Addr:     "localhost:6379", // Redis server address
+	Password: "",               // No password set
+	DB:       0,                // Default DB
+})
+
 func GetVideoFromS3(id string, ctx *gin.Context) {
-	var video Video
-	videoCollection.FindOne(ctx, bson.M{"videoid": id}).Decode(&video)
 
-	bucket := "aws-video-streaming-image-bucket"
-	key := "videos/" + video.Videotitle
+	cachedVideo, err := redisClient.Get("video:" + id).Result()
+	if err == redis.Nil {
+		var video Video
+		if err := videoCollection.FindOne(ctx, bson.M{"videoid": id}).Decode(&video); err != nil {
+			log.Printf("Failed to find video in database: %v", err)
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve video data"})
+			return
+		}
 
-	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("ap-south-1"))
-	if err != nil {
-		log.Fatalf("failed to load configuration: %v", err)
-	}
+		cfg, _ := config.LoadDefaultConfig(context.TODO(), config.WithRegion("ap-south-1"))
+		bucket := "aws-video-streaming-image-bucket"
+		key := "videos/" + video.Videotitle
+		client := s3.NewFromConfig(cfg)
 
-	client := s3.NewFromConfig(cfg)
-	input := &s3.GetObjectInput{
-		Bucket: &bucket,
-		Key:    &key,
-	}
+		// Fetch video from S3
+		input := &s3.GetObjectInput{
+			Bucket: &bucket,
+			Key:    &key,
+		}
+		result, err := client.GetObject(context.TODO(), input)
+		if err != nil {
+			log.Printf("Failed to get video from S3: %v", err)
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve video from S3"})
+			return
+		}
+		defer result.Body.Close()
 
-	result, err := client.GetObject(context.TODO(), input)
-	if err != nil {
-		log.Printf("Failed to get video from S3: %v", err)
+		// Read the video file from the S3 response body
+		videoData, err := ioutil.ReadAll(result.Body)
+		if err != nil {
+			log.Printf("Failed to read video data: %v", err)
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read video data"})
+			return
+		}
+
+		err = redisClient.Set("video:"+id, videoData, 60*time.Second).Err()
+		if err != nil {
+			log.Printf("Failed to cache video in Redis: %v", err)
+		}
+
+		// Stream the video to the client
+		ctx.Header("Content-Type", "video/mp4")
+		ctx.Header("Accept-Ranges", "bytes")
+		ctx.Writer.WriteHeader(http.StatusOK)
+
+		_, err = ctx.Writer.Write(videoData)
+		if err != nil {
+			log.Printf("Error while streaming video: %v", err)
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to stream video"})
+		}
+	} else if err != nil {
+		// Error occurred while fetching from Redis
+		log.Printf("Failed to fetch video from Redis: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve video"})
 		return
-	}
-	defer result.Body.Close()
+	} else {
+		// Video is cached, stream it directly
 
-	ctx.Header("Content-Type", "video/mp4")
-	ctx.Header("Accept-Ranges", "bytes")
-	ctx.Writer.WriteHeader(http.StatusOK)
+		ctx.Header("Content-Type", "video/mp4")
+		ctx.Header("Accept-Ranges", "bytes")
+		ctx.Writer.WriteHeader(http.StatusOK)
 
-	_, err = io.Copy(ctx.Writer, result.Body)
-	if err != nil {
-		log.Printf("Error while streaming video: %v", err)
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to stream video"})
+		_, err = ctx.Writer.Write([]byte(cachedVideo))
+		if err != nil {
+			log.Printf("Error while streaming cached video: %v", err)
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to stream cached video"})
+		}
 	}
 }
 
@@ -156,13 +199,6 @@ func VideoExists(ctx *gin.Context, video Video) bool {
 func SaveVideoToS3(file *multipart.FileHeader, ctx *gin.Context) {
 	key := "videos/"
 	bucket := "aws-video-streaming-image-bucket"
-
-	savePath := filepath.Join("C:/Users/Ammar1/go/video-streaming/videos/", file.Filename)
-	if err := ctx.SaveUploadedFile(file, savePath); err != nil {
-		log.Println("Error saving uploaded file:", err)
-		ctx.JSON(500, gin.H{"Error": "Failed to save uploaded file"})
-	}
-
 	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("ap-south-1"))
 	if err != nil {
 		log.Fatalf("failed to load configuration: %v", err)
@@ -170,18 +206,17 @@ func SaveVideoToS3(file *multipart.FileHeader, ctx *gin.Context) {
 
 	client := s3.NewFromConfig(cfg)
 
-	newfile, err := os.Open(savePath)
+	newfile, err := os.Open("videos/" + file.Filename)
 	if err != nil {
 		log.Fatalf("failed to open file %q: %v", file.Filename, err)
 	}
 	defer newfile.Close()
-
 	key += file.Filename
 	input := &s3.PutObjectInput{
 		Bucket:      &bucket,
 		Key:         &key,
 		Body:        newfile,
-		ContentType: aws.String("image/png"), // Update based on your file type
+		ContentType: aws.String("video/mp4"),
 	}
 	_, err = client.PutObject(context.TODO(), input)
 	if err != nil {
@@ -189,6 +224,5 @@ func SaveVideoToS3(file *multipart.FileHeader, ctx *gin.Context) {
 	}
 
 	fmt.Printf("Successfully uploaded %q to bucket %q\n", key, bucket)
-	os.Remove("videos/" + file.Filename)
 
 }

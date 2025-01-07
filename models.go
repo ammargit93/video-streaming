@@ -29,11 +29,13 @@ type Comment struct {
 	CommentText    string    `json:"commenttext" bson:"commenttext"`
 	CommentAuthor  string    `json:"commentauthor" bson:"commentauthor"`
 	CommentDate    time.Time `json:"commentdate" bson:"commentdate"`
+	CommentReplies []Reply   `json:"commentreplies" bson:"commentreplies"`
 }
 
 type Reply struct {
-	ReplyID       string    `json:"replyid" bson:"replyid"`
-	ReplyText     string    `json:"replytext" bson:"replytext"`
-	ReplyDate     time.Time `json:"replydate" bson:"replydate"`
-	ReplyParentID string    `json:"replyparentid" bson:"replyparentid"` //Foreign key corresponding to Comment.CommentID
+	ReplyID        string    `json:"replyid" bson:"replyid"`
+	ReplyText      string    `json:"replytext" bson:"replytext"`
+	ReplyAuthor    string    `json:"replyauthor" bson:"replyauthor"`
+	ReplyDate      time.Time `json:"replydate" bson:"replydate"`
+	ReplyCommentID string    `json:"replycommentid" bson:"replycommentid"` //Foreign key corresponding to Comment.CommentID
 }

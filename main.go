@@ -21,6 +21,7 @@ var (
 	videoCollection   *mongo.Collection
 	usersCollection   *mongo.Collection
 	commentCollection *mongo.Collection
+	replyCollection   *mongo.Collection
 	store             = sessions.NewCookieStore([]byte("secret-key"))
 	err               error
 )
@@ -41,6 +42,7 @@ func main() {
 	videoCollection = client.Database("streamdb").Collection("videos")
 	usersCollection = client.Database("streamdb").Collection("users")
 	commentCollection = client.Database("streamdb").Collection("comments")
+	replyCollection = client.Database("streamdb").Collection("replies")
 
 	r := gin.Default()
 	r.LoadHTMLGlob("templates/*.html")
@@ -168,7 +170,6 @@ func main() {
 		cursor.All(ctx, &videos)
 		cursor.Close(ctx)
 
-		// // Fetch comments for this video
 		cursor, _ = commentCollection.Find(ctx, bson.M{"commentvideoid": videoid})
 		cursor.All(ctx, &comments)
 		cursor.Close(ctx)
@@ -187,7 +188,7 @@ func main() {
 		comment := ctx.PostForm("comment")
 		videoid := ctx.Param("video_id")
 		var video Video
-
+		var replies []Reply
 		videoCollection.FindOne(ctx, bson.M{"videoid": videoid}).Decode(&video)
 		session, _ := store.Get(ctx.Request, "curr-session")
 
@@ -197,10 +198,13 @@ func main() {
 			CommentText:    comment,
 			CommentAuthor:  session.Values["username"].(string),
 			CommentDate:    time.Now(),
+			CommentReplies: replies,
 		}
+
 		fmt.Println("HERE")
 		commentCollection.InsertOne(ctx, newComment)
 		video.Videocomments = append(video.Videocomments, newComment)
+
 		_, err = videoCollection.UpdateOne(ctx, bson.M{"videoid": videoid}, bson.M{
 			"$set": bson.M{"videocomments": video.Videocomments},
 		})
@@ -223,17 +227,10 @@ func main() {
 
 	})
 
-	// r.GET("/video/:video_id", func(ctx *gin.Context) {
-	// 	videoid := ctx.Param("video_id")
-	// 	var videoToPlay Video
-	// 	videoCollection.FindOne(ctx, bson.M{"videoid": videoid}).Decode(&videoToPlay)
-	// 	videoBytes, _ := GetFromGridFS(videoid, db)
-
-	// 	ctx.Header("Content-Type", "video/mp4")
-	// 	ctx.Header("Accept-Ranges", "bytes")
-	// 	ctx.Writer.WriteHeader(200)
-	// 	ctx.Writer.Write(videoBytes)
-	// })
+	r.GET("/video/:video_id", func(ctx *gin.Context) {
+		id := ctx.Param("video_id")
+		GetVideoFromS3(id, ctx)
+	})
 
 	fmt.Println("Starting the Server.")
 	r.Run(":8080")
